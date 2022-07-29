@@ -11,8 +11,8 @@ int main(int argc, char** argv)
     std::string initial_charger_name = argv[1];
     std::string goal_charger_name = argv[2];
 
-    Solution solution;
-    solution.run(initial_charger_name, goal_charger_name);
+    Solution solution(initial_charger_name, goal_charger_name);
+    solution.run();
 
     return 0;
 }
