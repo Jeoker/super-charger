@@ -3,60 +3,86 @@
 #include <iomanip>
 #include <iostream>
 #include <cmath>
+#include <array>
 
 
 Solution::Solution(std::string start_charger, std::string end_charger) :
     m_start_charger(start_charger),
-    m_end_charger(end_charger) {
+    m_end_charger(end_charger),
+    m_start_point(0,0),
+    m_end_point(0,0) {
 
-    init_src_and_dst_();
-    init_candidates_map();
+    double direction;
+    init_src_and_dst_(direction);
+    init_candidates_map(direction);
 }
 
 
-void Solution::init_src_and_dst_() {
+void Solution::init_src_and_dst_(double& direction) {
     for (auto& charger : network) {
         if (charger.name == m_start_charger) {
-            m_start_lat = charger.lat;
-            m_start_lon = charger.lon;
             m_charger_map[charger.name] = std::make_shared<Node>(
-                Node(charger.lat, charger.lon, charger.rate, 0));
+                Node(charger.lat, charger.lon, charger.rate, -1, true));
+            m_start_point = m_charger_map[charger.name]->point;
         } else if (charger.name == m_end_charger) {
-            m_end_lat = charger.lat;
-            m_end_lon = charger.lon;
             m_charger_map[charger.name] = std::make_shared<Node>(
-                Node(charger.lat, charger.lon, charger.rate, 0));
+                Node(charger.lat, charger.lon, charger.rate, -1));
+            m_end_point = m_charger_map[charger.name]->point;
         }
     }
 
-    m_max_time = SphericalUtil::computeDistanceBetween({m_start_lat, m_start_lon},
-            {m_end_lat, m_end_lon}) / m_charger_map[m_start_charger]->rate / 1000;
-    m_charger_map[m_start_charger]->straight_time = m_max_time;
-    std::cout << "initial speed: " << m_charger_map[m_start_charger]->rate
-        << " | " << "initial max time: " << m_max_time << std::endl;
+    direction = SphericalUtil::computeHeading(m_start_point, m_end_point);
 }
 
 
-void Solution::init_candidates_map() {
+bool Solution::is_direction_good(LatLng& start_point, LatLng& cur_point, double direction) {
+    double rdirection = double(360) - direction;
+    double cur_direction = SphericalUtil::computeHeading(start_point, cur_point);
+    double error = fabs(cur_direction - direction);
+    if (std::min(double(360) - error, error) > 40) {
+        return false;
+    }
+    return true;
+}
+
+
+void Solution::init_candidates_map(const double& direction) {
     for (auto& charger : network) {
-        auto dst_time = 
-            SphericalUtil::computeDistanceBetween({m_end_lat, m_end_lon},
-                {charger.lat, charger.lon}) / charger.rate / 1000;
-        auto src_time = 
-            SphericalUtil::computeDistanceBetween({m_start_lat, m_start_lon},
-                {charger.lat, charger.lon}) / charger.rate / 1000;
-        if (dst_time + src_time < m_max_time) {
+        LatLng cur_point = {charger.lat, charger.lon};
+        if (is_direction_good(m_start_point, cur_point, direction) && 
+            is_direction_good(m_end_point, cur_point, direction)) {
             m_charger_map[charger.name] = std::make_shared<Node>(
-                Node(charger.lat, charger.lon, charger.rate, dst_time));
-            std::cout << "transfer from " << charger.name
-                << ":\t" << src_time << "\t" << dst_time
-                << " total:\t" << (src_time + dst_time) << std::endl;
+                Node(charger.lat, charger.lon, charger.rate, -1));
+        }
+    }
+}
+
+
+double Solution::search_best_route(std::string start_charger) {
+    if (m_charger_map[start_charger]->best_time >= 0) {
+        return m_charger_map[start_charger]->best_time;
+    }
+    double direction = SphericalUtil::computeHeading(
+        m_charger_map[start_charger]->point, m_end_point);
+    double cur_time = 1e9;
+    for (auto& charger : m_charger_map) {
+        if (charger.second->visited) {
+            continue;
+        }
+        if (!is_direction_good(m_charger_map[start_charger]->point,
+            charger.second->point, direction)) {
+            continue;
+        }
+        double dist = SphericalUtil::computeDistanceBetween(
+            m_charger_map[start_charger]->point, charger.second->point);
+        if (dist > 320000) {
+            continue;
         }
     }
 }
 
 
 void Solution::run() {
-    std::cout << m_charger_map.size();
+    search_best_route(m_start_charger);
     return;
 }

@@ -37,7 +37,7 @@ public:
             sin(dLng) * cos(toLat),
             cos(fromLat) * sin(toLat) - sin(fromLat) * cos(toLat) * cos(dLng));
 
-        return MathUtil::wrap(rad2deg(heading), -180, 180);
+        return MathUtil::wrap(rad2deg(heading), 0, 360);
     }
 
 
