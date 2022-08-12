@@ -14,13 +14,5 @@ for counter in range(100):
     cmd = "./res " + start_charger + " " + end_charger
     cmd = cmd.replace("'","\\'")
     ans = subprocess.check_output(cmd, shell=True).decode("utf-8").split("\n")[0]
-    # print(ans)
     os.system("./checker_linux \"" + ans + "\"")
     print()
-
-# cmd = "./res East_Brunswick_NJ Santee_SC"
-# cmd = cmd.replace("'","\\'")
-# print(cmd)
-# ans = subprocess.check_output(cmd, shell=True).decode("utf-8").split("\n")[0]
-# # ans = ans.replace("'","\\'")
-# os.system("./checker_linux \"" + ans + "\"")

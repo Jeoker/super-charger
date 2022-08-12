@@ -1,5 +1,5 @@
 all:
-	g++ *.cpp -o res -std=c++14
+	g++ -std=c++11 -O1 *.cpp -o candidate_solution
 
 clean:
 	rm ./res

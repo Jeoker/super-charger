@@ -41,7 +41,7 @@ double Solution::init_src_and_dst_() {
 bool Solution::is_direction_good_(LatLng& start_point, LatLng& cur_point, double direction) {
     auto cur_direction = SphericalUtil::computeHeading(start_point, cur_point);
     auto error = fabs(cur_direction - direction);
-    if (std::min(double(360) - error, error) > 90) {
+    if (std::min(double(360) - error, error) > 135) {
         return false;
     }
     return true;
@@ -60,15 +60,39 @@ void Solution::init_candidates_map_(const double direction) {
 }
 
 
+bool Solution::charger_in_path_(std::string target_charger,
+	std::string cur_charger, Strategy strategy) {
+	auto next_charger = std::string();
+	while (cur_charger != m_end_charger) {
+        if (strategy == Strategy::MIN) {
+            next_charger = m_charger_map[cur_charger]->best_min_charge_stop.second.first;
+            strategy = m_charger_map[cur_charger]->best_min_charge_stop.second.second;
+        } else {
+            next_charger = m_charger_map[cur_charger]->best_full_charge_stop.second.first;
+            strategy = m_charger_map[cur_charger]->best_full_charge_stop.second.second;
+        }
+        if (next_charger.size() == 0) {
+            return false;
+        } else if (next_charger == target_charger) {
+			return true;
+		}
+        cur_charger = next_charger;
+    }
+	return false;
+}
+
+
 void Solution::search_best_route_(std::string start_charger) {
-    if (m_charger_map[start_charger]->visited) {
+    if (m_charger_map[start_charger]->optimized) {
         return;
     }
-    m_charger_map[start_charger]->visited = true;
+    m_charger_map[start_charger]->optimized = true;
     double direction = SphericalUtil::computeHeading(
         m_charger_map[start_charger]->point, m_end_point);
+    auto debug_start = &m_charger_map[start_charger];
     for (auto& next_charger : m_charger_map) {
-        if (next_charger.first == start_charger ||
+        if (start_charger == next_charger.first ||
+		 	m_charger_map[start_charger]->visited ||
             !is_direction_good_(m_charger_map[start_charger]->point,
                 next_charger.second->point, direction)) {
             continue;
@@ -87,11 +111,15 @@ void Solution::search_best_route_(std::string start_charger) {
                 mk_max_range / m_charger_map[start_charger]->rate;
             m_charger_map[start_charger]->best_full_charge_stop =
                 {dist, {next_charger.first, Strategy::MIN}};
-            // std::cout << "Answer Found from: " << start_charger << std::endl;
             return;
         }
+        m_charger_map[start_charger]->visited = true;
         search_best_route_(next_charger.first);
-        // std::cout << "working on: " << next_charger.first << std::endl;
+        m_charger_map[start_charger]->visited = false;
+        if (next_charger.second->best_full_charge_total_time == mk_max_time &&
+            next_charger.second->best_min_charge_total_time == mk_max_time) {
+            continue;
+        }
         if (m_charger_map[start_charger]->rate > m_charger_map[next_charger.first]->rate) {
             auto cur_fully_charge_time =
                 mk_max_range / m_charger_map[start_charger]->rate -
@@ -99,21 +127,19 @@ void Solution::search_best_route_(std::string start_charger) {
             if (m_charger_map[next_charger.first]->best_min_charge_total_time <
                 m_charger_map[next_charger.first]->best_full_charge_total_time) {
                 cur_fully_charge_time += m_charger_map[next_charger.first]->best_min_charge_total_time;
-                if (cur_fully_charge_time < m_charger_map[start_charger]->best_full_charge_total_time) {
+                if (cur_fully_charge_time < m_charger_map[start_charger]->best_full_charge_total_time &&
+					!charger_in_path_(start_charger, next_charger.first, Strategy::MIN)) {
                     m_charger_map[start_charger]->best_full_charge_total_time = cur_fully_charge_time;
                     m_charger_map[start_charger]->best_full_charge_stop =
                         {dist, {next_charger.first, Strategy::MIN}};
-                    // std::cout << start_charger << " best full charge is to " <<
-                    //     next_charger.first << "\twith strategy: MIN" << std::endl;
                 }
             } else {
                 cur_fully_charge_time += m_charger_map[next_charger.first]->best_full_charge_total_time;
-                if (cur_fully_charge_time < m_charger_map[start_charger]->best_full_charge_total_time) {
+                if (cur_fully_charge_time < m_charger_map[start_charger]->best_full_charge_total_time &&
+					!charger_in_path_(start_charger, next_charger.first, Strategy::FULL)) {
                     m_charger_map[start_charger]->best_full_charge_total_time = cur_fully_charge_time;
                     m_charger_map[start_charger]->best_full_charge_stop =
                         {dist, {next_charger.first, Strategy::FULL}};
-                    // std::cout << start_charger << " best full charge is to " <<
-                    //     next_charger.first << "\twith strategy: FULL" << std::endl;
                 }
             }
         } else {
@@ -122,21 +148,19 @@ void Solution::search_best_route_(std::string start_charger) {
             if (m_charger_map[next_charger.first]->best_min_charge_total_time <
                 m_charger_map[next_charger.first]->best_full_charge_total_time) {
                 cur_min_charge_time += m_charger_map[next_charger.first]->best_min_charge_total_time;
-                if (cur_min_charge_time < m_charger_map[start_charger]->best_min_charge_total_time) {
+                if (cur_min_charge_time < m_charger_map[start_charger]->best_min_charge_total_time &&
+					!charger_in_path_(start_charger, next_charger.first, Strategy::MIN)) {
                     m_charger_map[start_charger]->best_min_charge_total_time = cur_min_charge_time;
                     m_charger_map[start_charger]->best_min_charge_stop =
                         {dist, {next_charger.first, Strategy::MIN}};
-                    // std::cout << start_charger << " best min charge is to " <<
-                    //     next_charger.first << "\twith strategy: MIN" << std::endl;
                 }
             } else {
                 cur_min_charge_time += m_charger_map[next_charger.first]->best_full_charge_total_time;
-                if (cur_min_charge_time < m_charger_map[start_charger]->best_min_charge_total_time) {
+                if (cur_min_charge_time < m_charger_map[start_charger]->best_min_charge_total_time &&
+					!charger_in_path_(start_charger, next_charger.first, Strategy::FULL)) {
                     m_charger_map[start_charger]->best_min_charge_total_time = cur_min_charge_time;
                     m_charger_map[start_charger]->best_min_charge_stop =
                         {dist, {next_charger.first, Strategy::FULL}};
-                    // std::cout << start_charger << " best min charge is to " <<
-                    //     next_charger.first << "\twith strategy: FULL" << std::endl;
                 }
             }
         }
@@ -166,7 +190,6 @@ std::string Solution::refine_path_(std::string start_charger) {
     start_charger = next_charger;
     while (start_charger != m_end_charger) {
         auto charge_time = double(0);
-        // std::cout << start_charger << " " << (strategy==Strategy::MIN?"MIN":"FULL")<< std::endl;
         if (strategy == Strategy::MIN) {
             next_charger = m_charger_map[start_charger]->best_min_charge_stop.second.first;
             charge_time = (m_charger_map[start_charger]->best_min_charge_stop.first -
